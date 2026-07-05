@@ -5,23 +5,23 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"log"
+	"slices"
 
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
 )
 
 func Handle() error {
-	files, err := getFiles()
+	fileNames, err := getFileNames()
 	if err != nil {
-		return errors.Wrap(err, "getFiles")
+		return errors.Wrap(err, "getFileNames")
 	}
 
-	for _, fileName := range files {
+	for _, fileName := range fileNames {
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
 		if err != nil {
-			log.Fatalf("Error parsing file: %v", err)
+			return errors.Wrap(err, "parser.ParseFile")
 		}
 
 		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName)
@@ -36,14 +36,18 @@ func Handle() error {
 
 func findVariance(fileName string, wrapDataSl []WrapData, callDataMap map[string][]CallData) {
 	for _, wrapData := range wrapDataSl {
-		var needFuncName string
+		var (
+			needFuncName string
+			index        int
+		)
 
-		for _, callData := range callDataMap[wrapData.errName] {
+		for idx, callData := range callDataMap[wrapData.errName] {
 			if callData.line >= wrapData.line {
 				break
 			}
 
 			needFuncName = callData.funcName
+			index = idx
 		}
 
 		if needFuncName == "" {
@@ -53,6 +57,8 @@ func findVariance(fileName string, wrapDataSl []WrapData, callDataMap map[string
 		if !isWrapMsgSuitable(needFuncName, wrapData.message) {
 			printIncorrectWrap(fileName, wrapData.line)
 		}
+
+		callDataMap[wrapData.errName] = slices.Delete(callDataMap[wrapData.errName], index, index+1)
 	}
 }
 

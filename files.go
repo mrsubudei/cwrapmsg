@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func getFiles() ([]string, error) {
+func getFileNames() ([]string, error) {
 	var files []string
 
 	err := filepath.Walk("./", func(path string, info os.FileInfo, err error) error {
