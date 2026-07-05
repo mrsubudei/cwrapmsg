@@ -14,7 +14,7 @@ import (
 func Handle() error {
 	files, err := getFiles()
 	if err != nil {
-		return errors.Wrap(err, "getAllFiles")
+		return errors.Wrap(err, "getFiles")
 	}
 
 	for _, fileName := range files {

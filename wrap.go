@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type WrapData struct {
@@ -54,7 +56,21 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 }
 
 func isWrapMsgSuitable(funcName, message string) bool {
-	return strings.Contains(funcName, message)
+	return strings.Contains(funcName, cutMessage(message))
+}
+
+func cutMessage(message string) string {
+	result := make([]rune, 0, utf8.RuneCountInString(message))
+
+	for _, v := range message {
+		if unicode.IsLetter(v) || unicode.IsDigit(v) || v == '.' {
+			result = append(result, v)
+		} else {
+			break
+		}
+	}
+
+	return string(result)
 }
 
 func getFirstArgumentName(callExpr *ast.CallExpr) (string, bool) {
