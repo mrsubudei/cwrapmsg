@@ -39,6 +39,7 @@ func findVariance(fileName string, wrapDataSl []WrapData, callDataMap map[string
 		var (
 			needFuncName string
 			index        int
+			parentFunc   string
 		)
 
 		for idx, callData := range callDataMap[wrapData.errName] {
@@ -48,13 +49,14 @@ func findVariance(fileName string, wrapDataSl []WrapData, callDataMap map[string
 
 			needFuncName = callData.funcName
 			index = idx
+			parentFunc = callData.parentFunc
 		}
 
 		if needFuncName == "" {
 			continue
 		}
 
-		if !isWrapMsgSuitable(needFuncName, wrapData.message) {
+		if wrapData.parentFunc == parentFunc && !isWrapMsgSuitable(needFuncName, wrapData.message) {
 			printIncorrectWrap(fileName, wrapData.line)
 		}
 
@@ -63,32 +65,37 @@ func findVariance(fileName string, wrapDataSl []WrapData, callDataMap map[string
 }
 
 type CallData struct {
-	line     int
-	funcName string
+	line       int
+	funcName   string
+	parentFunc string
 }
 
 func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[string][]CallData {
-	callDataMap := make(map[string][]CallData)
+	var (
+		callDataMap = make(map[string][]CallData)
+		currentFunc string
+	)
 
 	ast.Inspect(node, func(n ast.Node) bool {
-		callExpr, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
+		switch expr := n.(type) {
+		case *ast.FuncDecl:
+			currentFunc = expr.Name.Name
+		case *ast.CallExpr:
+			pos := fset.Position(expr.Pos())
 
-		pos := fset.Position(callExpr.Pos())
+			if parent := findParentAssignment(node, expr); parent != nil {
+				if ident, ok := parent.(*ast.AssignStmt); ok {
+					for _, lhs := range ident.Lhs {
+						for _, errName := range errNames {
+							if id, ok := lhs.(*ast.Ident); ok && id.Name == errName {
+								funcName := getFuncName(expr.Fun)
 
-		if parent := findParentAssignment(node, callExpr); parent != nil {
-			if ident, ok := parent.(*ast.AssignStmt); ok {
-				for _, lhs := range ident.Lhs {
-					for _, errName := range errNames {
-						if id, ok := lhs.(*ast.Ident); ok && id.Name == errName {
-							funcName := getFuncName(callExpr.Fun)
-
-							callDataMap[errName] = append(callDataMap[errName], CallData{
-								line:     pos.Line,
-								funcName: funcName,
-							})
+								callDataMap[errName] = append(callDataMap[errName], CallData{
+									line:       pos.Line,
+									funcName:   funcName,
+									parentFunc: currentFunc,
+								})
+							}
 						}
 					}
 				}

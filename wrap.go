@@ -9,39 +9,47 @@ import (
 )
 
 type WrapData struct {
-	line    int
-	errName string
-	message string
+	line       int
+	errName    string
+	message    string
+	parentFunc string
 }
 
 func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]WrapData, map[string]struct{}) {
-	wrapDataSl := []WrapData{}
-	errorNamesMap := make(map[string]struct{})
+	var (
+		wrapDataSl    = []WrapData{}
+		errorNamesMap = make(map[string]struct{})
+		currentFunc   string
+	)
 
 	ast.Inspect(node, func(n ast.Node) bool {
-		if callExpr, ok := n.(*ast.CallExpr); ok {
-			if fun, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
+		switch expr := n.(type) {
+		case *ast.FuncDecl:
+			currentFunc = expr.Name.Name
+		case *ast.CallExpr:
+			if fun, ok := expr.Fun.(*ast.SelectorExpr); ok {
 				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == "errors" &&
-					(fun.Sel.Name == "Wrap" || fun.Sel.Name == "Wrapf") && len(callExpr.Args) >= 2 {
+					(fun.Sel.Name == "Wrap" || fun.Sel.Name == "Wrapf") && len(expr.Args) >= 2 {
 
-					message, isSecondArgumentString := getSecondArgumentName(callExpr)
+					message, isSecondArgumentString := getSecondArgumentName(expr)
 					if !isSecondArgumentString {
 						return false
 					}
 
-					position := fset.Position(callExpr.Pos())
+					position := fset.Position(expr.Pos())
 
-					funcName, ok := isFirstArgumentFuncCall(callExpr)
+					funcName, ok := isFirstArgumentFuncCall(expr)
 					if ok && !isWrapMsgSuitable(funcName, message) {
 						printIncorrectWrap(fileName, position.Line)
 					} else {
-						errName, ok := getFirstArgumentName(callExpr)
+						errName, ok := getFirstArgumentName(expr)
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
-								line:    position.Line,
-								errName: errName,
-								message: message,
+								line:       position.Line,
+								errName:    errName,
+								message:    message,
+								parentFunc: currentFunc,
 							})
 						}
 					}
@@ -56,7 +64,7 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 }
 
 func isWrapMsgSuitable(funcName, message string) bool {
-	return strings.Contains(funcName, cutMessage(message))
+	return strings.Contains(strings.ToLower(funcName), strings.ToLower(cutMessage(message)))
 }
 
 func cutMessage(message string) string {
