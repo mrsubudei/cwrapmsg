@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	versionInfo = "cwrap version: v0.0.1"
+	versionInfo = "cwrapmsg version: v0.0.1"
 )
 
 func main() {

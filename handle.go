@@ -12,12 +12,27 @@ import (
 )
 
 func Handle() error {
+	ignoreDataMap := GetIgnoreDataMap()
+
 	fileNames, err := getFileNames()
 	if err != nil {
 		return errors.Wrap(err, "getFileNames")
 	}
 
 	for _, fileName := range fileNames {
+		chunks := getChunks(fileName)
+		var skip bool
+
+		for _, chunk := range chunks {
+			if ignoreData, ok := ignoreDataMap[chunk]; ok && ignoreData.fullIgnore {
+				skip = true
+			}
+		}
+
+		if skip {
+			continue
+		}
+
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
 		if err != nil {
@@ -28,14 +43,25 @@ func Handle() error {
 
 		callDataMap := getFuncCalls(node, fset, maps.Keys(errNamesMap))
 
-		findVariance(fileName, wrapDataSl, callDataMap)
+		findVariance(fileName, wrapDataSl, callDataMap, ignoreDataMap)
 	}
 
 	return nil
 }
 
-func findVariance(fileName string, wrapDataSl []WrapData, callDataMap map[string][]CallData) {
+func findVariance(
+	fileName string,
+	wrapDataSl []WrapData,
+	callDataMap map[string][]CallData,
+	ignoreDataMap map[string]IgnoreData,
+) {
 	for _, wrapData := range wrapDataSl {
+		if ignoreData, hasFileName := ignoreDataMap[fileName]; hasFileName {
+			if _, hasFuncName := ignoreData.funcNamesMap[wrapData.parentFunc]; hasFuncName {
+				continue
+			}
+		}
+
 		var (
 			needFuncName string
 			index        int
