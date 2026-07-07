@@ -64,7 +64,18 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 }
 
 func isWrapMsgSuitable(funcName, message string) bool {
+	if strings.Contains(funcName, "*ast.CallExpr") {
+		funcName = getLastWord(funcName)
+		message = getLastWord(message)
+	}
+
 	return strings.Contains(strings.ToLower(funcName), strings.ToLower(cutMessage(message)))
+}
+
+func getLastWord(str string) string {
+	sl := strings.Split(str, ".")
+
+	return sl[len(sl)-1]
 }
 
 func cutMessage(message string) string {
