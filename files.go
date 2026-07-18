@@ -18,6 +18,10 @@ func getFileNames() ([]string, error) {
 			return errors.Wrap(err, "filepath.Walk")
 		}
 
+		if info.IsDir() && (info.Name() == ".git" || info.Name() == ".cache") {
+			return filepath.SkipDir
+		}
+
 		if !info.IsDir() {
 			if !isNeeded(info.Name()) {
 				return nil
