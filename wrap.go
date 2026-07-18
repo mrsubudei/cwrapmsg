@@ -67,9 +67,24 @@ func isWrapMsgSuitable(funcName, message string) bool {
 	if strings.Contains(funcName, "*ast.CallExpr") {
 		funcName = getLastWord(funcName)
 		message = getLastWord(message)
+
+		return strings.ToLower(funcName) == strings.ToLower(message)
 	}
 
-	return strings.Contains(strings.ToLower(funcName), strings.ToLower(cutMessage(message)))
+	funcNameSl := strings.Split(funcName, ".")
+	messageSl := strings.Split(cutMessage(message), ".")
+
+	if len(messageSl) > len(funcNameSl) {
+		return false
+	}
+
+	for idx := 0; idx < len(messageSl); idx++ {
+		if strings.ToLower(messageSl[len(messageSl)-1-idx]) != strings.ToLower(funcNameSl[len(funcNameSl)-1-idx]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func getLastWord(str string) string {
