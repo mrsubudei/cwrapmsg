@@ -5,7 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"slices"
+	"sort"
 
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
@@ -53,10 +53,6 @@ func Handle(flags Flags) error {
 			return errors.Wrap(err, "parser.ParseFile")
 		}
 
-		if node.Name.Name == "bootstrap" {
-			continue
-		}
-
 		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName)
 
 		callDataMap := getFuncCalls(node, fset, maps.Keys(errNamesMap))
@@ -80,52 +76,63 @@ func findVariance(
 			}
 		}
 
-		var (
-			needFuncName string
-			index        int
-			parentFunc   string
-		)
+		endLine := 0
 
-		for idx, callData := range callDataMap[wrapData.errName] {
-			if callData.line >= wrapData.line {
+		callDataSlice := callDataMap[wrapData.errName]
+		sort.Slice(callDataSlice, func(i, j int) bool {
+			return callDataSlice[i].endLine < callDataSlice[j].endLine
+		})
+
+		for _, callData := range callDataSlice {
+			if callData.endLine >= wrapData.line {
 				break
 			}
 
-			needFuncName = callData.funcName
-			index = idx
-			parentFunc = callData.parentFunc
+			endLine = callData.endLine
 		}
 
-		if needFuncName == "" {
+		callDataLineMap := getCallDataLineMap(callDataMap[wrapData.errName])
+		callData, hasCalldata := callDataLineMap[endLine]
+
+		if !hasCalldata || callData.funcName == "" {
 			continue
 		}
 
-		if wrapData.parentFunc == parentFunc && !isWrapMsgSuitable(needFuncName, wrapData.message) {
+		if wrapData.parentFunc == callData.parentFunc && !isWrapMsgSuitable(callData.funcName, wrapData.message) {
 			printIncorrectWrap(fileName, wrapData.line)
 		}
-
-		callDataMap[wrapData.errName] = slices.Delete(callDataMap[wrapData.errName], index, index+1)
 	}
 }
 
 type CallData struct {
-	line       int
 	funcName   string
 	parentFunc string
+	endLine    int
 }
 
 func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[string][]CallData {
-	var (
-		callDataMap = make(map[string][]CallData)
-		currentFunc string
-	)
+	callDataMap := make(map[string][]CallData)
+	var currentFunc string
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch expr := n.(type) {
 		case *ast.FuncDecl:
-			currentFunc = expr.Name.Name
+			if expr.Recv != nil && len(expr.Recv.List) > 0 {
+				receiverType := ""
+				switch t := expr.Recv.List[0].Type.(type) {
+				case *ast.Ident:
+					receiverType = t.Name
+				case *ast.StarExpr:
+					if ident, ok := t.X.(*ast.Ident); ok {
+						receiverType = ident.Name
+					}
+				}
+				currentFunc = receiverType + "_" + expr.Name.Name
+			} else {
+				currentFunc = expr.Name.Name
+			}
 		case *ast.CallExpr:
-			pos := fset.Position(expr.Pos())
+			endLine := fset.Position(expr.End())
 
 			if parent := findParentAssignment(node, expr); parent != nil {
 				if ident, ok := parent.(*ast.AssignStmt); ok {
@@ -135,9 +142,9 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 								funcName := getFuncName(expr.Fun)
 
 								callDataMap[errName] = append(callDataMap[errName], CallData{
-									line:       pos.Line,
 									funcName:   funcName,
 									parentFunc: currentFunc,
+									endLine:    endLine.Line,
 								})
 							}
 						}
@@ -187,4 +194,14 @@ func getFuncName(fun ast.Expr) string {
 
 func printIncorrectWrap(fileName string, line int) {
 	fmt.Printf("%s %d\n", fileName, line)
+}
+
+func getCallDataLineMap(callDataSl []CallData) map[int]CallData {
+	result := make(map[int]CallData, len(callDataSl))
+
+	for _, v := range callDataSl {
+		result[v.endLine] = v
+	}
+
+	return result
 }

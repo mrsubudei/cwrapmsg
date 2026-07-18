@@ -25,7 +25,20 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch expr := n.(type) {
 		case *ast.FuncDecl:
-			currentFunc = expr.Name.Name
+			if expr.Recv != nil && len(expr.Recv.List) > 0 {
+				receiverName := ""
+				switch t := expr.Recv.List[0].Type.(type) {
+				case *ast.Ident:
+					receiverName = t.Name
+				case *ast.StarExpr:
+					if ident, ok := t.X.(*ast.Ident); ok {
+						receiverName = ident.Name
+					}
+				}
+				currentFunc = receiverName + "_" + expr.Name.Name
+			} else {
+				currentFunc = expr.Name.Name
+			}
 		case *ast.CallExpr:
 			if fun, ok := expr.Fun.(*ast.SelectorExpr); ok {
 				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == "errors" &&

@@ -20,7 +20,7 @@ func GetIgnoreDataMap(skipIgnoring bool) map[string]IgnoreData {
 	}
 
 	ignoreDataMap := make(map[string]IgnoreData)
-	ignoreFiles := []string{"./.idea/cwrap.txt", "./.vscode/cwrap.txt", "./cwrap.txt"}
+	ignoreFiles := []string{"./.idea/cwrap.txt", "./.vscode/cwrap.txt", "./scripts/cwrap.txt"}
 
 	for _, ignoreFile := range ignoreFiles {
 		file, err := os.Open(ignoreFile)
