@@ -76,23 +76,31 @@ func findVariance(
 			}
 		}
 
-		endLine := 0
-
 		callDataSlice := callDataMap[wrapData.errName]
 		sort.Slice(callDataSlice, func(i, j int) bool {
 			return callDataSlice[i].endLine < callDataSlice[j].endLine
 		})
 
+		lastEndLine := 0
+		isNested := false
 		for _, callData := range callDataSlice {
 			if callData.endLine >= wrapData.line {
+				if lastEndLine < callData.startLine && callData.startLine < wrapData.line {
+					isNested = true
+				}
+
 				break
 			}
 
-			endLine = callData.endLine
+			lastEndLine = callData.endLine
+		}
+
+		if isNested {
+			continue
 		}
 
 		callDataLineMap := getCallDataLineMap(callDataMap[wrapData.errName])
-		callData, hasCalldata := callDataLineMap[endLine]
+		callData, hasCalldata := callDataLineMap[lastEndLine]
 
 		if !hasCalldata || callData.funcName == "" {
 			continue
@@ -107,6 +115,7 @@ func findVariance(
 type CallData struct {
 	funcName   string
 	parentFunc string
+	startLine  int
 	endLine    int
 }
 
@@ -132,6 +141,7 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 				currentFunc = expr.Name.Name
 			}
 		case *ast.CallExpr:
+			startLine := fset.Position(expr.Lparen)
 			endLine := fset.Position(expr.End())
 
 			if parent := findParentAssignment(node, expr); parent != nil {
@@ -144,6 +154,7 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 								callDataMap[errName] = append(callDataMap[errName], CallData{
 									funcName:   funcName,
 									parentFunc: currentFunc,
+									startLine:  startLine.Line,
 									endLine:    endLine.Line,
 								})
 							}
@@ -187,6 +198,8 @@ func getFuncName(fun ast.Expr) string {
 		return expr.Name
 	case *ast.SelectorExpr:
 		return fmt.Sprintf("%s.%s", getFuncName(expr.X), expr.Sel.Name)
+	case *ast.IndexExpr:
+		return getFuncName(expr.X)
 	default:
 		return fmt.Sprintf("%T", fun)
 	}
