@@ -11,8 +11,18 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-func Handle() error {
-	ignoreDataMap := GetIgnoreDataMap()
+type Flags struct {
+	SkipIgnoring bool
+	OnlyUnstaged bool
+}
+
+func Handle(flags Flags) error {
+	ignoreDataMap := GetIgnoreDataMap(flags.SkipIgnoring)
+
+	unstagedFilesMap, err := getUnstagedFilesMap(flags.OnlyUnstaged)
+	if err != nil {
+		return errors.Wrap(err, "getUnstagedFilesMap")
+	}
 
 	fileNames, err := getFileNames()
 	if err != nil {
@@ -20,6 +30,10 @@ func Handle() error {
 	}
 
 	for _, fileName := range fileNames {
+		if _, ok := unstagedFilesMap[fileName]; !ok && flags.OnlyUnstaged {
+			continue
+		}
+
 		chunks := getChunks(fileName)
 		var skip bool
 
@@ -37,6 +51,10 @@ func Handle() error {
 		node, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
 		if err != nil {
 			return errors.Wrap(err, "parser.ParseFile")
+		}
+
+		if node.Name.Name == "bootstrap" {
+			continue
 		}
 
 		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName)

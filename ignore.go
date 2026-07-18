@@ -14,7 +14,11 @@ type IgnoreData struct {
 	fullIgnore   bool
 }
 
-func GetIgnoreDataMap() map[string]IgnoreData {
+func GetIgnoreDataMap(skipIgnoring bool) map[string]IgnoreData {
+	if skipIgnoring {
+		return nil
+	}
+
 	ignoreDataMap := make(map[string]IgnoreData)
 	ignoreFiles := []string{"./.idea/cwrap.txt", "./.vscode/cwrap.txt", "./cwrap.txt"}
 
