@@ -96,7 +96,7 @@ func checkStandard(funcName, message string) bool {
 }
 
 func checkWithUnderScore(funcName, message string) bool {
-	return checkStandard(funcName, strings.ReplaceAll(message, "_", ""))
+	return checkStandard(strings.ReplaceAll(funcName, "_", ""), strings.ReplaceAll(message, "_", ""))
 }
 
 func getLastWord(str string) string {
