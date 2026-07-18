@@ -16,7 +16,7 @@ type IgnoreData struct {
 
 func GetIgnoreDataMap() map[string]IgnoreData {
 	ignoreDataMap := make(map[string]IgnoreData)
-	ignoreFiles := []string{"./.idea/cwrap.txt", "./.vscode/cwrap.txt"}
+	ignoreFiles := []string{"./.idea/cwrap.txt", "./.vscode/cwrap.txt", "./cwrap.txt"}
 
 	for _, ignoreFile := range ignoreFiles {
 		file, err := os.Open(ignoreFile)

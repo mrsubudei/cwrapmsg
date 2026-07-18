@@ -71,6 +71,14 @@ func isWrapMsgSuitable(funcName, message string) bool {
 		return strings.ToLower(funcName) == strings.ToLower(message)
 	}
 
+	if !checkStandard(funcName, message) && !checkWithUnderScore(funcName, message) {
+		return false
+	}
+
+	return true
+}
+
+func checkStandard(funcName, message string) bool {
 	funcNameSl := strings.Split(funcName, ".")
 	messageSl := strings.Split(cutMessage(message), ".")
 
@@ -85,6 +93,10 @@ func isWrapMsgSuitable(funcName, message string) bool {
 	}
 
 	return true
+}
+
+func checkWithUnderScore(funcName, message string) bool {
+	return checkStandard(funcName, strings.ReplaceAll(message, "_", ""))
 }
 
 func getLastWord(str string) string {
