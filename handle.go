@@ -137,8 +137,16 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 				currentFunc = expr.Name.Name
 			}
 		case *ast.FuncLit:
-			nestingLevel++
 			position := fset.Position(expr.End())
+			currentFuncEndLine := funcEndLines.Get()
+
+			for position.Line > currentFuncEndLine && nestingLevel > 0 {
+				nestingLevel--
+				funcEndLines.Delete()
+				currentFuncEndLine = funcEndLines.Get()
+			}
+
+			nestingLevel++
 			funcEndLines.Add(position.Line)
 		case *ast.CallExpr:
 			if parent := findParentAssignment(node, expr); parent != nil {

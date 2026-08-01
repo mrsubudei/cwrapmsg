@@ -55,8 +55,16 @@ func FindWrapCalls(
 				currentFunc = expr.Name.Name
 			}
 		case *ast.FuncLit:
-			nestingLevel++
 			position := fset.Position(expr.End())
+			currentFuncEndLine := funcEndLines.Get()
+
+			for position.Line > currentFuncEndLine && nestingLevel > 0 {
+				nestingLevel--
+				funcEndLines.Delete()
+				currentFuncEndLine = funcEndLines.Get()
+			}
+
+			nestingLevel++
 			funcEndLines.Add(position.Line)
 		case *ast.CallExpr:
 			if fun, ok := expr.Fun.(*ast.SelectorExpr); ok {
@@ -103,7 +111,7 @@ func FindWrapCalls(
 
 					position := fset.Position(expr.Pos())
 					currFuncEndLine := funcEndLines.Get()
-					for position.Line > currFuncEndLine {
+					for currFuncEndLine != 0 && position.Line > currFuncEndLine {
 						nestingLevel--
 						funcEndLines.Delete()
 						currFuncEndLine = funcEndLines.Get()
