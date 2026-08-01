@@ -33,6 +33,9 @@ func main() {
 	var unstaged bool
 	pflag.BoolVarP(&unstaged, "unstaged", "u", false, "handle only unstaged files")
 
+	var cyrillic bool
+	pflag.BoolVarP(&cyrillic, "cyrillic", "c", false, "check messages with cyrillic symbols")
+
 	pflag.Parse()
 
 	if help {
@@ -48,8 +51,9 @@ func main() {
 	}
 
 	flags := cwrapmsg.Flags{
-		SkipIgnoring: skip,
-		OnlyUnstaged: unstaged,
+		SkipIgnoring:  skip,
+		OnlyUnstaged:  unstaged,
+		CheckCyrillic: cyrillic,
 	}
 
 	if err := cwrapmsg.Handle(flags); err != nil {

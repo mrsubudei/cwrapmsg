@@ -15,7 +15,13 @@ type WrapData struct {
 	parentFunc string
 }
 
-func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]WrapData, map[string]struct{}) {
+func FindWrapCalls(
+	node *ast.File,
+	fset *token.FileSet,
+	fileName string,
+	wrapPackageName string,
+	checkCyrillic bool,
+) ([]WrapData, map[string]struct{}) {
 	var (
 		wrapDataSl    = []WrapData{}
 		errorNamesMap = make(map[string]struct{})
@@ -41,7 +47,7 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 			}
 		case *ast.CallExpr:
 			if fun, ok := expr.Fun.(*ast.SelectorExpr); ok {
-				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == "errors" &&
+				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == wrapPackageName &&
 					(fun.Sel.Name == "Wrap" || fun.Sel.Name == "Wrapf") && len(expr.Args) >= 2 {
 
 					message, isSecondArgumentString := getSecondArgumentName(expr)
@@ -49,7 +55,7 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 						return false
 					}
 
-					if checkCyrillic(message) {
+					if !checkCyrillic && hasCyrillic(message) {
 						return false
 					}
 
@@ -160,7 +166,7 @@ func isFirstArgumentFuncCall(callExpr *ast.CallExpr) (string, bool) {
 	return "", false
 }
 
-func checkCyrillic(message string) bool {
+func hasCyrillic(message string) bool {
 	for _, r := range message {
 		if unicode.Is(unicode.Cyrillic, r) {
 			return true
@@ -168,4 +174,20 @@ func checkCyrillic(message string) bool {
 	}
 
 	return false
+}
+
+func getWrapPackageName(node *ast.File) string {
+	packageName := "errors"
+
+	for _, imp := range node.Imports {
+		importPath := imp.Path.Value[1 : len(imp.Path.Value)-1]
+
+		if importPath == "github.com/pkg/errors" && imp.Name != nil {
+			packageName = imp.Name.Name
+
+			break
+		}
+	}
+
+	return packageName
 }

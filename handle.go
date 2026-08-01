@@ -12,8 +12,9 @@ import (
 )
 
 type Flags struct {
-	SkipIgnoring bool
-	OnlyUnstaged bool
+	SkipIgnoring  bool
+	OnlyUnstaged  bool
+	CheckCyrillic bool
 }
 
 func Handle(flags Flags) error {
@@ -53,7 +54,9 @@ func Handle(flags Flags) error {
 			return errors.Wrap(err, "parser.ParseFile")
 		}
 
-		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName)
+		wrapPackageName := getWrapPackageName(node)
+
+		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName, wrapPackageName, flags.CheckCyrillic)
 
 		callDataMap := getFuncCalls(node, fset, maps.Keys(errNamesMap))
 
