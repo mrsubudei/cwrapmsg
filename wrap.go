@@ -152,7 +152,7 @@ func isWrapMsgSuitable(funcName, message string) bool {
 		funcName = getLastWord(funcName)
 		message = getLastWord(message)
 
-		return strings.EqualFold(funcName, message)
+		return strings.EqualFold(funcName, cutMessage(message))
 	}
 
 	if !checkStandard(funcName, message) && !checkWithUnderScore(funcName, message) {
