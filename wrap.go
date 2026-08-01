@@ -10,6 +10,7 @@ import (
 
 type WrapData struct {
 	line          int
+	column        int
 	errName       string
 	message       string
 	parentFunc    string
@@ -81,13 +82,14 @@ func FindWrapCalls(
 
 					funcName, ok := isArgumentFuncCall(expr, 0)
 					if ok && !isWrapMsgSuitable(funcName, message) {
-						printIncorrectWrap(fileName, position.Line)
+						printIncorrectWrap(fileName, position.Line, position.Column)
 					} else {
 						errName, ok := getArgumentName(expr, 0)
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
 								line:          position.Line,
+								column:        position.Column,
 								errName:       errName,
 								message:       message,
 								parentFunc:    currentFunc,
@@ -123,13 +125,14 @@ func FindWrapCalls(
 
 					funcName, ok := isArgumentFuncCall(expr, wIdx+1)
 					if ok && !isWrapMsgSuitable(funcName, message) {
-						printIncorrectWrap(fileName, position.Line)
+						printIncorrectWrap(fileName, position.Line, position.Column)
 					} else {
 						errName, ok := getArgumentName(expr, wIdx+1)
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
 								line:          position.Line,
+								column:        position.Column,
 								errName:       errName,
 								message:       message,
 								parentFunc:    currentFunc,

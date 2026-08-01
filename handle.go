@@ -97,7 +97,7 @@ func findVariance(
 		}
 
 		if wrapData.parentFunc == callData.parentFunc && !isWrapMsgSuitable(callData.funcName, wrapData.message) {
-			printIncorrectWrap(fileName, wrapData.line)
+			printIncorrectWrap(fileName, wrapData.line, wrapData.column)
 		}
 	}
 }
@@ -212,8 +212,8 @@ func getFuncName(fun ast.Expr) string {
 	}
 }
 
-func printIncorrectWrap(fileName string, line int) {
-	fmt.Printf("%s %d\n", fileName, line)
+func printIncorrectWrap(fileName string, line, column int) {
+	fmt.Printf("%s:%d:%d\n", fileName, line, column)
 }
 
 func findCallData(callDataSl []CallData, wrapLine int) (CallData, bool) {
