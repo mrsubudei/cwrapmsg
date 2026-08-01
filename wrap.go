@@ -9,10 +9,11 @@ import (
 )
 
 type WrapData struct {
-	line       int
-	errName    string
-	message    string
-	parentFunc string
+	line          int
+	errName       string
+	message       string
+	parentFunc    string
+	nestingsLevel int
 }
 
 func FindWrapCalls(
@@ -22,15 +23,21 @@ func FindWrapCalls(
 	wrapPackageName string,
 	checkCyrillic bool,
 ) ([]WrapData, map[string]struct{}) {
-	var (
-		wrapDataSl    = []WrapData{}
-		errorNamesMap = make(map[string]struct{})
-		currentFunc   string
-	)
+
+	wrapDataSl := []WrapData{}
+	errorNamesMap := make(map[string]struct{})
+	var currentFunc string
+	nestingLevel := 0
+	funcEndLines := Stack{}
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch expr := n.(type) {
 		case *ast.FuncDecl:
+			position := fset.Position(expr.End())
+			nestingLevel = 1
+			funcEndLines = Stack{}
+			funcEndLines.Add(position.Line)
+
 			if expr.Recv != nil && len(expr.Recv.List) > 0 {
 				receiverName := ""
 				switch t := expr.Recv.List[0].Type.(type) {
@@ -45,10 +52,22 @@ func FindWrapCalls(
 			} else {
 				currentFunc = expr.Name.Name
 			}
+		case *ast.FuncLit:
+			nestingLevel++
+			position := fset.Position(expr.End())
+			funcEndLines.Add(position.Line)
 		case *ast.CallExpr:
 			if fun, ok := expr.Fun.(*ast.SelectorExpr); ok {
 				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == wrapPackageName &&
 					(fun.Sel.Name == "Wrap" || fun.Sel.Name == "Wrapf") && len(expr.Args) >= 2 {
+
+					position := fset.Position(expr.Pos())
+					currFuncEndLine := funcEndLines.Get()
+					for position.Line > currFuncEndLine {
+						nestingLevel--
+						funcEndLines.Delete()
+						currFuncEndLine = funcEndLines.Get()
+					}
 
 					message, isSecondArgumentString := getSecondArgumentName(expr)
 					if !isSecondArgumentString {
@@ -59,8 +78,6 @@ func FindWrapCalls(
 						return false
 					}
 
-					position := fset.Position(expr.Pos())
-
 					funcName, ok := isFirstArgumentFuncCall(expr)
 					if ok && !isWrapMsgSuitable(funcName, message) {
 						printIncorrectWrap(fileName, position.Line)
@@ -69,10 +86,11 @@ func FindWrapCalls(
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
-								line:       position.Line,
-								errName:    errName,
-								message:    message,
-								parentFunc: currentFunc,
+								line:          position.Line,
+								errName:       errName,
+								message:       message,
+								parentFunc:    currentFunc,
+								nestingsLevel: nestingLevel,
 							})
 						}
 					}
@@ -91,7 +109,7 @@ func isWrapMsgSuitable(funcName, message string) bool {
 		funcName = getLastWord(funcName)
 		message = getLastWord(message)
 
-		return strings.ToLower(funcName) == strings.ToLower(message)
+		return strings.EqualFold(funcName, message)
 	}
 
 	if !checkStandard(funcName, message) && !checkWithUnderScore(funcName, message) {
@@ -110,7 +128,7 @@ func checkStandard(funcName, message string) bool {
 	}
 
 	for idx := 0; idx < len(messageSl); idx++ {
-		if strings.ToLower(messageSl[len(messageSl)-1-idx]) != strings.ToLower(funcNameSl[len(funcNameSl)-1-idx]) {
+		if !strings.EqualFold(messageSl[len(messageSl)-1-idx], funcNameSl[len(funcNameSl)-1-idx]) {
 			return false
 		}
 	}
@@ -190,4 +208,29 @@ func getWrapPackageName(node *ast.File) string {
 	}
 
 	return packageName
+}
+
+type Stack struct {
+	sl []int
+}
+
+func (s *Stack) Add(n int) {
+	s.sl = append(s.sl, n)
+}
+
+func (s *Stack) Get() int {
+	if len(s.sl) > 0 {
+		return s.sl[len(s.sl)-1]
+	}
+
+	return 0
+}
+
+// Delete does not remove last element
+func (s *Stack) Delete() {
+	if len(s.sl) <= 1 {
+		return
+	}
+
+	s.sl = s.sl[:len(s.sl)-1]
 }

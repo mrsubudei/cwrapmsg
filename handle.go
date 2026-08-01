@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"sort"
 
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
@@ -79,33 +78,11 @@ func findVariance(
 			}
 		}
 
-		callDataSlice := callDataMap[wrapData.errName]
-		sort.Slice(callDataSlice, func(i, j int) bool {
-			return callDataSlice[i].endLine < callDataSlice[j].endLine
-		})
+		errNameWithNesting := errNameAndNesting(wrapData.errName, wrapData.nestingsLevel)
+		callDataSl := callDataMap[errNameWithNesting]
 
-		lastEndLine := 0
-		isNested := false
-		for _, callData := range callDataSlice {
-			if callData.endLine >= wrapData.line {
-				if lastEndLine < callData.startLine && callData.startLine < wrapData.line {
-					isNested = true
-				}
-
-				break
-			}
-
-			lastEndLine = callData.endLine
-		}
-
-		if isNested {
-			continue
-		}
-
-		callDataLineMap := getCallDataLineMap(callDataMap[wrapData.errName])
-		callData, hasCalldata := callDataLineMap[lastEndLine]
-
-		if !hasCalldata || callData.funcName == "" {
+		callData, hasCallData := findCallData(callDataSl, wrapData.line)
+		if !hasCallData {
 			continue
 		}
 
@@ -118,17 +95,23 @@ func findVariance(
 type CallData struct {
 	funcName   string
 	parentFunc string
-	startLine  int
-	endLine    int
+	line       int
 }
 
 func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[string][]CallData {
 	callDataMap := make(map[string][]CallData)
 	var currentFunc string
+	nestingLevel := 0
+	funcEndLines := Stack{}
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch expr := n.(type) {
 		case *ast.FuncDecl:
+			position := fset.Position(expr.End())
+			nestingLevel = 1
+			funcEndLines = Stack{}
+			funcEndLines.Add(position.Line)
+
 			if expr.Recv != nil && len(expr.Recv.List) > 0 {
 				receiverType := ""
 				switch t := expr.Recv.List[0].Type.(type) {
@@ -143,22 +126,31 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 			} else {
 				currentFunc = expr.Name.Name
 			}
+		case *ast.FuncLit:
+			nestingLevel++
+			position := fset.Position(expr.End())
+			funcEndLines.Add(position.Line)
 		case *ast.CallExpr:
-			startLine := fset.Position(expr.Lparen)
-			endLine := fset.Position(expr.End())
-
 			if parent := findParentAssignment(node, expr); parent != nil {
 				if ident, ok := parent.(*ast.AssignStmt); ok {
 					for _, lhs := range ident.Lhs {
 						for _, errName := range errNames {
 							if id, ok := lhs.(*ast.Ident); ok && id.Name == errName {
-								funcName := getFuncName(expr.Fun)
+								position := fset.Position(expr.Pos())
+								currFuncEndLine := funcEndLines.Get()
+								for position.Line > currFuncEndLine {
+									nestingLevel--
+									funcEndLines.Delete()
+									currFuncEndLine = funcEndLines.Get()
+								}
 
-								callDataMap[errName] = append(callDataMap[errName], CallData{
+								funcName := getFuncName(expr.Fun)
+								errNameWithNesting := errNameAndNesting(errName, nestingLevel)
+
+								callDataMap[errNameWithNesting] = append(callDataMap[errNameWithNesting], CallData{
 									funcName:   funcName,
 									parentFunc: currentFunc,
-									startLine:  startLine.Line,
-									endLine:    endLine.Line,
+									line:       position.Line,
 								})
 							}
 						}
@@ -203,6 +195,8 @@ func getFuncName(fun ast.Expr) string {
 		return fmt.Sprintf("%s.%s", getFuncName(expr.X), expr.Sel.Name)
 	case *ast.IndexExpr:
 		return getFuncName(expr.X)
+	case *ast.IndexListExpr:
+		return getFuncName(expr.X)
 	default:
 		return fmt.Sprintf("%T", fun)
 	}
@@ -212,12 +206,22 @@ func printIncorrectWrap(fileName string, line int) {
 	fmt.Printf("%s %d\n", fileName, line)
 }
 
-func getCallDataLineMap(callDataSl []CallData) map[int]CallData {
-	result := make(map[int]CallData, len(callDataSl))
+func findCallData(callDataSl []CallData, wrapLine int) (CallData, bool) {
+	result := CallData{}
+	found := false
 
-	for _, v := range callDataSl {
-		result[v.endLine] = v
+	for _, callData := range callDataSl {
+		if callData.line < wrapLine {
+			result = callData
+			found = true
+		} else {
+			break
+		}
 	}
 
-	return result
+	return result, found
+}
+
+func errNameAndNesting(errName string, nestingLevel int) string {
+	return fmt.Sprintf("%s-%d", errName, nestingLevel)
 }
