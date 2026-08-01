@@ -117,6 +117,10 @@ func FindWrapCalls(
 						return false
 					}
 
+					if !checkCyrillic && hasCyrillic(message) {
+						return false
+					}
+
 					funcName, ok := isArgumentFuncCall(expr, wIdx+1)
 					if ok && !isWrapMsgSuitable(funcName, message) {
 						printIncorrectWrap(fileName, position.Line)
