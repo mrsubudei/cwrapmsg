@@ -21,6 +21,7 @@ func FindWrapCalls(
 	fset *token.FileSet,
 	fileName string,
 	wrapPackageName string,
+	fmtPackageName string,
 	checkCyrillic bool,
 ) ([]WrapData, map[string]struct{}) {
 
@@ -69,7 +70,7 @@ func FindWrapCalls(
 						currFuncEndLine = funcEndLines.Get()
 					}
 
-					message, isSecondArgumentString := getSecondArgumentName(expr)
+					message, isSecondArgumentString := getArgumentValue(expr, 1)
 					if !isSecondArgumentString {
 						return false
 					}
@@ -78,11 +79,49 @@ func FindWrapCalls(
 						return false
 					}
 
-					funcName, ok := isFirstArgumentFuncCall(expr)
+					funcName, ok := isArgumentFuncCall(expr, 0)
 					if ok && !isWrapMsgSuitable(funcName, message) {
 						printIncorrectWrap(fileName, position.Line)
 					} else {
-						errName, ok := getFirstArgumentName(expr)
+						errName, ok := getArgumentName(expr, 0)
+						if ok {
+							errorNamesMap[errName] = struct{}{}
+							wrapDataSl = append(wrapDataSl, WrapData{
+								line:          position.Line,
+								errName:       errName,
+								message:       message,
+								parentFunc:    currentFunc,
+								nestingsLevel: nestingLevel,
+							})
+						}
+					}
+				}
+				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == fmtPackageName &&
+					(fun.Sel.Name == "Errorf") && len(expr.Args) >= 2 {
+
+					position := fset.Position(expr.Pos())
+					currFuncEndLine := funcEndLines.Get()
+					for position.Line > currFuncEndLine {
+						nestingLevel--
+						funcEndLines.Delete()
+						currFuncEndLine = funcEndLines.Get()
+					}
+
+					message, ok := getArgumentValue(expr, 0)
+					if !ok || !strings.Contains(message, "%w") {
+						return false
+					}
+
+					wIdx, ok := getWIndex(message)
+					if !ok || len(expr.Args) <= wIdx+1 {
+						return false
+					}
+
+					funcName, ok := isArgumentFuncCall(expr, wIdx+1)
+					if ok && !isWrapMsgSuitable(funcName, message) {
+						printIncorrectWrap(fileName, position.Line)
+					} else {
+						errName, ok := getArgumentName(expr, wIdx+1)
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
@@ -160,28 +199,49 @@ func cutMessage(message string) string {
 	return string(result)
 }
 
-func getFirstArgumentName(callExpr *ast.CallExpr) (string, bool) {
-	if firstArg, ok := callExpr.Args[0].(*ast.Ident); ok {
+func getArgumentName(callExpr *ast.CallExpr, idx int) (string, bool) {
+	if firstArg, ok := callExpr.Args[idx].(*ast.Ident); ok {
 		return firstArg.Name, true
 	}
 
 	return "", false
 }
 
-func getSecondArgumentName(callExpr *ast.CallExpr) (string, bool) {
-	if strLit, ok := callExpr.Args[1].(*ast.BasicLit); ok && strLit.Kind == token.STRING {
+func getArgumentValue(callExpr *ast.CallExpr, idx int) (string, bool) {
+	if strLit, ok := callExpr.Args[idx].(*ast.BasicLit); ok && strLit.Kind == token.STRING {
 		return strings.Trim(strLit.Value, "\\\""), true
 	}
 
 	return "", false
 }
 
-func isFirstArgumentFuncCall(callExpr *ast.CallExpr) (string, bool) {
-	if callExp, isFuncCall := callExpr.Args[0].(*ast.CallExpr); isFuncCall {
+func isArgumentFuncCall(callExpr *ast.CallExpr, idx int) (string, bool) {
+	if callExp, isFuncCall := callExpr.Args[idx].(*ast.CallExpr); isFuncCall {
 		return getFuncName(callExp.Fun), true
 	}
 
 	return "", false
+}
+
+func getWIndex(str string) (int, bool) {
+	count := 0
+	letterIdx := -1
+	wIdx := 0
+
+	for i := 0; i < len(str)-1; i++ {
+		if str[i] == '%' {
+			if unicode.IsLetter(rune(str[i+1])) {
+				letterIdx++
+
+				if str[i+1] == 'w' {
+					count++
+					wIdx = letterIdx
+				}
+			}
+		}
+	}
+
+	return wIdx, count == 1
 }
 
 func hasCyrillic(message string) bool {
@@ -201,6 +261,22 @@ func getWrapPackageName(node *ast.File) string {
 		importPath := imp.Path.Value[1 : len(imp.Path.Value)-1]
 
 		if importPath == "github.com/pkg/errors" && imp.Name != nil {
+			packageName = imp.Name.Name
+
+			break
+		}
+	}
+
+	return packageName
+}
+
+func getFmtPackageName(node *ast.File) string {
+	packageName := "fmt"
+
+	for _, imp := range node.Imports {
+		importPath := imp.Path.Value[1 : len(imp.Path.Value)-1]
+
+		if importPath == "fmt" && imp.Name != nil {
 			packageName = imp.Name.Name
 
 			break

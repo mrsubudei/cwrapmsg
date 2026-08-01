@@ -58,7 +58,9 @@ func Handle(flags Flags) error {
 
 		wrapPackageName := getWrapPackageName(node)
 
-		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName, wrapPackageName, flags.CheckCyrillic)
+		fmtPackageName := getFmtPackageName(node)
+
+		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName, wrapPackageName, fmtPackageName, flags.CheckCyrillic)
 
 		callDataMap := getFuncCalls(node, fset, maps.Keys(errNamesMap))
 
