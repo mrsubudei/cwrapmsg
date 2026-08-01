@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
@@ -53,13 +54,15 @@ func Handle(flags Flags) error {
 			return errors.Wrap(err, "parser.ParseFile")
 		}
 
+		noLintsMap := findDisableLines(node, fset)
+
 		wrapPackageName := getWrapPackageName(node)
 
 		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName, wrapPackageName, flags.CheckCyrillic)
 
 		callDataMap := getFuncCalls(node, fset, maps.Keys(errNamesMap))
 
-		findVariance(fileName, wrapDataSl, callDataMap, ignoreDataMap)
+		findVariance(fileName, wrapDataSl, callDataMap, ignoreDataMap, noLintsMap)
 	}
 
 	return nil
@@ -70,12 +73,17 @@ func findVariance(
 	wrapDataSl []WrapData,
 	callDataMap map[string][]CallData,
 	ignoreDataMap map[string]IgnoreData,
+	noLintsMap map[int]struct{},
 ) {
 	for _, wrapData := range wrapDataSl {
 		if ignoreData, hasFileName := ignoreDataMap[fileName]; hasFileName {
 			if _, hasFuncName := ignoreData.funcNamesMap[wrapData.parentFunc]; hasFuncName {
 				continue
 			}
+		}
+
+		if isWrapCallIgnored(wrapData.line, noLintsMap) {
+			continue
 		}
 
 		errNameWithNesting := errNameAndNesting(wrapData.errName, wrapData.nestingsLevel)
@@ -224,4 +232,39 @@ func findCallData(callDataSl []CallData, wrapLine int) (CallData, bool) {
 
 func errNameAndNesting(errName string, nestingLevel int) string {
 	return fmt.Sprintf("%s-%d", errName, nestingLevel)
+}
+
+func findDisableLines(file *ast.File, fset *token.FileSet) map[int]struct{} {
+	result := make(map[int]struct{})
+
+	for _, commentGroup := range file.Comments {
+		for _, comment := range commentGroup.List {
+			if strings.HasPrefix(comment.Text, "//nolint:") {
+				linters := strings.TrimPrefix(comment.Text, "//nolint:")
+				linters = strings.TrimSpace(linters)
+
+				for _, linter := range strings.Split(linters, ",") {
+					if strings.TrimSpace(linter) == "cwrap" {
+						pos := fset.Position(comment.Pos())
+
+						result[pos.Line] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+func isWrapCallIgnored(callLine int, noLintMap map[int]struct{}) bool {
+	if _, ok := noLintMap[callLine]; ok {
+		return true
+	}
+
+	if _, ok := noLintMap[callLine-1]; ok {
+		return true
+	}
+
+	return false
 }
