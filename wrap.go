@@ -49,6 +49,10 @@ func FindWrapCalls(node *ast.File, fset *token.FileSet, fileName string) ([]Wrap
 						return false
 					}
 
+					if checkCyrillic(message) {
+						return false
+					}
+
 					position := fset.Position(expr.Pos())
 
 					funcName, ok := isFirstArgumentFuncCall(expr)
@@ -154,4 +158,14 @@ func isFirstArgumentFuncCall(callExpr *ast.CallExpr) (string, bool) {
 	}
 
 	return "", false
+}
+
+func checkCyrillic(message string) bool {
+	for _, r := range message {
+		if unicode.Is(unicode.Cyrillic, r) {
+			return true
+		}
+	}
+
+	return false
 }
