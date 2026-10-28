@@ -150,8 +150,8 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 			funcEndLines.Add(position.Line)
 		case *ast.CallExpr:
 			if parent := findParentAssignment(node, expr); parent != nil {
-				if ident, ok := parent.(*ast.AssignStmt); ok {
-					for _, lhs := range ident.Lhs {
+				if lhsList, ok := getAssignedNames(parent); ok {
+					for _, lhs := range lhsList {
 						for _, errName := range errNames {
 							if id, ok := lhs.(*ast.Ident); ok && id.Name == errName {
 								position := fset.Position(expr.Pos())
@@ -199,10 +199,42 @@ func findParentAssignment(node ast.Node, callExpr *ast.CallExpr) ast.Node {
 			}
 		}
 
+		if declStmt, ok := n.(*ast.DeclStmt); ok {
+			if genDecl, ok := declStmt.Decl.(*ast.GenDecl); ok {
+				for _, spec := range genDecl.Specs {
+					if valueSpec, ok := spec.(*ast.ValueSpec); ok {
+						for _, value := range valueSpec.Values {
+							if value == callExpr {
+								parent = valueSpec
+
+								return false
+							}
+						}
+					}
+				}
+			}
+		}
+
 		return true
 	})
 
 	return parent
+}
+
+func getAssignedNames(parent ast.Node) ([]ast.Expr, bool) {
+	switch stmt := parent.(type) {
+	case *ast.AssignStmt:
+		return stmt.Lhs, true
+	case *ast.ValueSpec:
+		names := make([]ast.Expr, 0, len(stmt.Names))
+		for _, name := range stmt.Names {
+			names = append(names, name)
+		}
+
+		return names, true
+	}
+
+	return nil, false
 }
 
 func getFuncName(fun ast.Expr) string {
