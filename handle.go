@@ -156,7 +156,7 @@ func getFuncCalls(node *ast.File, fset *token.FileSet, errNames []string) map[st
 							if id, ok := lhs.(*ast.Ident); ok && id.Name == errName {
 								position := fset.Position(expr.Pos())
 								currFuncEndLine := funcEndLines.Get()
-								for position.Line > currFuncEndLine {
+								for position.Line > currFuncEndLine && nestingLevel > 0 {
 									nestingLevel--
 									funcEndLines.Delete()
 									currFuncEndLine = funcEndLines.Get()

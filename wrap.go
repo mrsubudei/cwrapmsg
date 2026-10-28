@@ -73,7 +73,7 @@ func FindWrapCalls(
 
 					position := fset.Position(expr.Pos())
 					currFuncEndLine := funcEndLines.Get()
-					for position.Line > currFuncEndLine {
+					for position.Line > currFuncEndLine && nestingLevel > 0 {
 						nestingLevel--
 						funcEndLines.Delete()
 						currFuncEndLine = funcEndLines.Get()
@@ -111,7 +111,7 @@ func FindWrapCalls(
 
 					position := fset.Position(expr.Pos())
 					currFuncEndLine := funcEndLines.Get()
-					for currFuncEndLine != 0 && position.Line > currFuncEndLine {
+					for position.Line > currFuncEndLine && nestingLevel > 0 {
 						nestingLevel--
 						funcEndLines.Delete()
 						currFuncEndLine = funcEndLines.Get()
