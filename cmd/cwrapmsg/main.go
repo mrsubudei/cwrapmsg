@@ -9,26 +9,27 @@ import (
 )
 
 var (
-	helpInfo = `Usage: cwrap [OPTION]...
+	helpInfo = `Usage: cwrapmsg [OPTION]...
 
 -u     --unstaged   handle only unstaged files
--s     --skip       do not take into account list in cwrap.txt
+-c     --cyrillic   check messages with cyrillic symbols
+-s     --skip       do not take into account list in cwrapmsg.txt
 -h     --help       show help information
--v     --version    print cwrap version
+-v     --version    print cwrapmsg version
 `
 
-	versionInfo = "cwrap version: v1.0.6"
+	versionInfo = "cwrapmsg version: v1.0.0"
 )
 
 func main() {
 	var version bool
-	pflag.BoolVarP(&version, "version", "v", false, "print cwrap version")
+	pflag.BoolVarP(&version, "version", "v", false, "print cwrapmsg version")
 
 	var help bool
 	pflag.BoolVarP(&help, "help", "h", false, "show help information")
 
 	var skip bool
-	pflag.BoolVarP(&skip, "skip", "s", false, "do not take into account list in cwrap.txt")
+	pflag.BoolVarP(&skip, "skip", "s", false, "do not take into account list in cwrapmsg.txt")
 
 	var unstaged bool
 	pflag.BoolVarP(&unstaged, "unstaged", "u", false, "handle only unstaged files")

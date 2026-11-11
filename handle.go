@@ -286,7 +286,7 @@ func findDisableLines(file *ast.File, fset *token.FileSet) map[int]struct{} {
 				linters = strings.TrimSpace(linters)
 
 				for _, linter := range strings.Split(linters, ",") {
-					if strings.TrimSpace(linter) == "cwrap" {
+					if strings.TrimSpace(linter) == "cwrapmsg" {
 						pos := fset.Position(comment.Pos())
 
 						result[pos.Line] = struct{}{}

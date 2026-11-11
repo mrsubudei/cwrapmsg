@@ -20,7 +20,7 @@ func GetIgnoreDataMap(skipIgnoring bool) map[string]IgnoreData {
 	}
 
 	ignoreDataMap := make(map[string]IgnoreData)
-	ignoreFiles := []string{"./.idea/cwrap.txt", "./.vscode/cwrap.txt", "./scripts/cwrap.txt"}
+	ignoreFiles := []string{"./.idea/cwrapmsg.txt", "./.vscode/cwrapmsg.txt", "./scripts/cwrapmsg.txt"}
 
 	for _, ignoreFile := range ignoreFiles {
 		file, err := os.Open(ignoreFile)
@@ -37,14 +37,17 @@ func GetIgnoreDataMap(skipIgnoring bool) map[string]IgnoreData {
 				break
 			}
 
-			ignoreData := IgnoreData{
-				funcNamesMap: map[string]struct{}{},
-			}
-
 			sl := strings.Split(line, " ")
 			dir := sl[0]
 			if len(dir) > 0 && dir[len(dir)-1] == '/' {
 				dir = dir[:len(dir)-1]
+			}
+
+			ignoreData, ok := ignoreDataMap[dir]
+			if !ok {
+				ignoreData = IgnoreData{
+					funcNamesMap: map[string]struct{}{},
+				}
 			}
 
 			if len(sl) > 1 {
