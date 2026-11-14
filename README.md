@@ -3,7 +3,9 @@
 cwrapmsg checks that the message of a wrapped error matches the name of the function or method which returned the error.
 
 It finds all calls of `errors.Wrap` / `errors.Wrapf` from `github.com/pkg/errors` and `fmt.Errorf` with `%w`
-and compares the message with the name of the called function. Mismatches are printed as `file:line:column`.
+and compares the message with the name of the called function.
+
+The linter is built on [`go/analysis`](https://pkg.go.dev/golang.org/x/tools/go/analysis).
 
 ```go
 items, err := s.store.GetByIDs(ctx, ids)
@@ -23,23 +25,35 @@ go install github.com/mrsubudei/cwrapmsg/cmd/cwrapmsg@latest
 
 ## Usage
 
-Run it from the root directory of the project:
+Run it in the root directory of the module with the packages to check:
 
 ```sh
-cwrapmsg
+cwrapmsg ./...
 ```
+
+Or with `go vet`:
+
+```sh
+go vet -vettool=$(which cwrapmsg) ./...
+```
+
+Mismatches are reported as:
+
+```
+internal/store/store.go:42:10: message in errors.Wrap does not match function or method name
+```
+
+If mismatches are found, the exit code is not zero.
 
 | Flag | Description |
 |---|---|
-| `-u`, `--unstaged` | check only changed and untracked files (from `git status`) |
-| `-c`, `--cyrillic` | check messages with cyrillic symbols, they are skipped by default |
-| `-s`, `--skip` | do not use the exclusion list from `cwrapmsg.txt` |
-| `-h`, `--help` | show help information |
-| `-v`, `--version` | print the version |
+| `-ignore-cyrillic` | skip messages with cyrillic symbols, they are checked by default |
+| `-case-insensitive` | compare the message with the name case-insensitively |
 
-Directories `.git` and `.cache` and generated files (`*.pb.*`, `*_gen.go`) are skipped.
+The other flags are the standard flags of `go/analysis` linters (`-json`, `-test`, etc.), see `cwrapmsg -h`.
 
-The exit code is always 0, even if mismatches are found. To fail a CI job, check that the output is empty.
+Generated files are skipped: files with the `// Code generated ... DO NOT EDIT.` comment,
+`*.pb.*` and `*_gen.go` files.
 
 ## Message format
 
@@ -58,9 +72,15 @@ return errors.Wrap(err, "store.GetByIDs") // a part of the name, without "s."
 
 return errors.Wrap(err, "GetByIDs") // a part of the name, without "s.store."
 
-return errors.Wrap(err, "s.store.getbyids") // the comparison is case-insensitive
+return errors.Wrap(err, "store.Get_By_IDs") // underscores are ignored
+```
 
-return errors.Wrap(err, "store.get_by_ids") // underscores are ignored
+The comparison is case-sensitive. With the `-case-insensitive` flag these messages are correct too:
+
+```go
+return errors.Wrap(err, "s.store.getbyids")
+
+return errors.Wrap(err, "store.get_by_ids")
 ```
 
 The same rules apply to `fmt.Errorf`:
@@ -101,7 +121,7 @@ return errors.Wrap(err, "Execx") // only "Execx" is compared
 
 ## What is not checked
 
-- Messages with cyrillic symbols, unless the `-c` flag is set.
+- Messages with cyrillic symbols, if the `-ignore-cyrillic` flag is set.
 - Messages which are not string literals: `errors.Wrap(err, msg)`.
 - `fmt.Errorf` without `%w` or with more than one `%w`.
 - Wraps where the error was returned in another function or closure than the wrap:
@@ -122,7 +142,8 @@ return errors.Wrap(err, "Execx") // only "Execx" is compared
 ## Known limitations
 
 The analysis is based on the source code only and compares the wrap with the last assignment of the error
-variable above it. These rare cases are not reported, examples are in [testdata/not_found](testdata/not_found):
+variable above it. These rare cases are not reported,
+examples are in [testdata/cwrapmsg/limitations](testdata/cwrapmsg/limitations):
 
 - The call and the wrap are on the same line:
 
@@ -158,8 +179,8 @@ variable above it. These rare cases are not reported, examples are in [testdata/
   return errors.Wrap(err, "bar") // err is from foo, but it is compared with bar
   ```
 
-- A wrap inside another wrap which is not checked (cyrillic message, message is not a string literal,
-  `fmt.Errorf` without `%w`):
+- A wrap inside another wrap which is not checked (cyrillic message with `-ignore-cyrillic`,
+  message is not a string literal, `fmt.Errorf` without `%w`):
 
   ```go
   return errors.Wrap(errors.Wrap(foo(), "bar"), "ошибка")
@@ -167,44 +188,5 @@ variable above it. These rare cases are not reported, examples are in [testdata/
 
 ## Exclusions
 
-Exclusions do not work for wraps where the error is a direct function call, such wraps are always checked:
-
-```go
-//nolint:cwrapmsg
-return errors.Wrap(foo(), "bar") // reported anyway
-```
-
-### nolint
-
-Add the `//nolint:cwrapmsg` comment on the line above the wrap or on the same line.
-The comment must be exactly `//nolint:cwrapmsg` (several linters separated by commas are allowed: `//nolint:lll,cwrapmsg`),
-an explanation after it like `//nolint:cwrapmsg // reason` is not supported.
-
-```go
-//nolint:cwrapmsg
-return errors.Wrap(err, "error while get by ids")
-```
-
-```go
-return errors.Wrap(err, "error while get by ids") //nolint:cwrapmsg
-```
-
-### cwrapmsg.txt
-
-Packages, files, or functions and methods in a file can be excluded with the `cwrapmsg.txt` file
-in one of the directories: `.idea`, `.vscode` or `scripts`.
-
-One entry per line:
-
-- a package or a file: the path relative to the root of the project;
-- functions in a file: the path, a space and names separated by commas without spaces;
-- a method: the name of the type, an underscore and the name of the method.
-
-Names are case-sensitive. The file must not contain empty lines: everything after an empty line is ignored.
-
-```
-internal/app
-internal/config/config.go
-internal/config/db.go GetDBConfig,GetClickHouseConfig
-internal/client/cdn/client.go ClientImpl_PutObject
-```
+The linter has no exclusions of its own: they are provided by the tool which runs the analyzer,
+for example `//nolint:cwrapmsg` comments and exclusion rules in golangci-lint.

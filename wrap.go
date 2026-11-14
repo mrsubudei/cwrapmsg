@@ -6,33 +6,36 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 type WrapData struct {
-	line          int
-	column        int
 	errName       string
 	message       string
 	parentFunc    string
 	nestingsLevel int
+	line          int
+	node          ast.Node
+	isErrorf      bool
+	isWrapf       bool
 }
 
-func FindWrapCalls(
-	node *ast.File,
+func findWrapCalls(
+	pass *analysis.Pass,
+	file *ast.File,
 	fset *token.FileSet,
-	fileName string,
+	cfg Config,
 	wrapPackageName string,
 	fmtPackageName string,
-	checkCyrillic bool,
 ) ([]WrapData, map[string]struct{}) {
-
 	wrapDataSl := []WrapData{}
 	errorNamesMap := make(map[string]struct{})
 	var currentFunc string
 	nestingLevel := 0
 	funcEndLines := Stack{}
 
-	ast.Inspect(node, func(n ast.Node) bool {
+	ast.Inspect(file, func(n ast.Node) bool {
 		switch expr := n.(type) {
 		case *ast.FuncDecl:
 			position := fset.Position(expr.End())
@@ -84,24 +87,27 @@ func FindWrapCalls(
 						return false
 					}
 
-					if !checkCyrillic && hasCyrillic(message) {
+					if cfg.IgnoreCyrillic && hasCyrillic(message) {
 						return false
 					}
 
+					isWrapf := fun.Sel.Name == "Wrapf"
+
 					funcName, ok := isArgumentFuncCall(expr, 0)
-					if ok && !isWrapMsgSuitable(funcName, message) {
-						printIncorrectWrap(fileName, position.Line, position.Column)
+					if ok && !isWrapMsgSuitable(cfg, funcName, message) {
+						pass.Report(getDiagReport(expr, isWrapf, false))
 					} else {
 						errName, ok := getArgumentName(expr, 0)
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
 								line:          position.Line,
-								column:        position.Column,
 								errName:       errName,
 								message:       message,
 								parentFunc:    currentFunc,
 								nestingsLevel: nestingLevel,
+								node:          expr,
+								isWrapf:       isWrapf,
 							})
 						}
 					}
@@ -127,24 +133,25 @@ func FindWrapCalls(
 						return false
 					}
 
-					if !checkCyrillic && hasCyrillic(message) {
+					if cfg.IgnoreCyrillic && hasCyrillic(message) {
 						return false
 					}
 
 					funcName, ok := isArgumentFuncCall(expr, wIdx+1)
-					if ok && !isWrapMsgSuitable(funcName, message) {
-						printIncorrectWrap(fileName, position.Line, position.Column)
+					if ok && !isWrapMsgSuitable(cfg, funcName, message) {
+						pass.Report(getDiagReport(expr, false, true))
 					} else {
 						errName, ok := getArgumentName(expr, wIdx+1)
 						if ok {
 							errorNamesMap[errName] = struct{}{}
 							wrapDataSl = append(wrapDataSl, WrapData{
 								line:          position.Line,
-								column:        position.Column,
 								errName:       errName,
 								message:       message,
 								parentFunc:    currentFunc,
 								nestingsLevel: nestingLevel,
+								node:          expr,
+								isErrorf:      true,
 							})
 						}
 					}
@@ -158,22 +165,30 @@ func FindWrapCalls(
 	return wrapDataSl, errorNamesMap
 }
 
-func isWrapMsgSuitable(funcName, message string) bool {
+func isWrapMsgSuitable(cfg Config, funcName, message string) bool {
 	if strings.Contains(funcName, "*ast.CallExpr") {
 		funcName = getLastWord(funcName)
 		message = getLastWord(message)
 
-		return strings.EqualFold(funcName, cutMessage(message))
+		return isEqual(cfg, funcName, cutMessage(message))
 	}
 
-	if !checkStandard(funcName, message) && !checkWithUnderScore(funcName, message) {
+	if !checkStandard(cfg, funcName, message) && !checkWithUnderScore(cfg, funcName, message) {
 		return false
 	}
 
 	return true
 }
 
-func checkStandard(funcName, message string) bool {
+func isEqual(cfg Config, funcName, message string) bool {
+	if cfg.CaseInsensitive {
+		return strings.EqualFold(funcName, message)
+	}
+
+	return funcName == message
+}
+
+func checkStandard(cfg Config, funcName, message string) bool {
 	funcNameSl := strings.Split(funcName, ".")
 	messageSl := strings.Split(cutMessage(message), ".")
 
@@ -182,7 +197,7 @@ func checkStandard(funcName, message string) bool {
 	}
 
 	for idx := 0; idx < len(messageSl); idx++ {
-		if !strings.EqualFold(messageSl[len(messageSl)-1-idx], funcNameSl[len(funcNameSl)-1-idx]) {
+		if !isEqual(cfg, funcNameSl[len(funcNameSl)-1-idx], messageSl[len(messageSl)-1-idx]) {
 			return false
 		}
 	}
@@ -190,8 +205,8 @@ func checkStandard(funcName, message string) bool {
 	return true
 }
 
-func checkWithUnderScore(funcName, message string) bool {
-	return checkStandard(strings.ReplaceAll(funcName, "_", ""), strings.ReplaceAll(message, "_", ""))
+func checkWithUnderScore(cfg Config, funcName, message string) bool {
+	return checkStandard(cfg, strings.ReplaceAll(funcName, "_", ""), strings.ReplaceAll(message, "_", ""))
 }
 
 func getLastWord(str string) string {
@@ -269,36 +284,18 @@ func hasCyrillic(message string) bool {
 	return false
 }
 
-func getWrapPackageName(node *ast.File) string {
-	packageName := "errors"
-
-	for _, imp := range node.Imports {
+func getPackageNameOrAlias(file *ast.File, defaultName, packageImport string) string {
+	for _, imp := range file.Imports {
 		importPath := imp.Path.Value[1 : len(imp.Path.Value)-1]
 
-		if importPath == "github.com/pkg/errors" && imp.Name != nil {
-			packageName = imp.Name.Name
+		if importPath == packageImport && imp.Name != nil {
+			defaultName = imp.Name.Name
 
 			break
 		}
 	}
 
-	return packageName
-}
-
-func getFmtPackageName(node *ast.File) string {
-	packageName := "fmt"
-
-	for _, imp := range node.Imports {
-		importPath := imp.Path.Value[1 : len(imp.Path.Value)-1]
-
-		if importPath == "fmt" && imp.Name != nil {
-			packageName = imp.Name.Name
-
-			break
-		}
-	}
-
-	return packageName
+	return defaultName
 }
 
 type Stack struct {

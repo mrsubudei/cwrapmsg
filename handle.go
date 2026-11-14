@@ -3,91 +3,37 @@ package cwrapmsg
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"strings"
 
-	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
+	"golang.org/x/tools/go/analysis"
 )
 
-type Flags struct {
-	SkipIgnoring  bool
-	OnlyUnstaged  bool
-	CheckCyrillic bool
+type Config struct {
+	IgnoreCyrillic  bool
+	CaseInsensitive bool
 }
 
-func Handle(flags Flags) error {
-	ignoreDataMap := GetIgnoreDataMap(flags.SkipIgnoring)
+func handle(
+	pass *analysis.Pass,
+	file *ast.File,
+	cfg Config,
+	wrapPackageName, fmtPackageName string,
+) {
+	wrapDataSl, errNamesMap := findWrapCalls(pass, file, pass.Fset, cfg, wrapPackageName, fmtPackageName)
 
-	unstagedFilesMap, err := getUnstagedFilesMap(flags.OnlyUnstaged)
-	if err != nil {
-		return errors.Wrap(err, "getUnstagedFilesMap")
-	}
+	callDataMap := getFuncCalls(file, pass.Fset, maps.Keys(errNamesMap))
 
-	fileNames, err := getFileNames()
-	if err != nil {
-		return errors.Wrap(err, "getFileNames")
-	}
-
-	for _, fileName := range fileNames {
-		if _, ok := unstagedFilesMap[fileName]; !ok && flags.OnlyUnstaged {
-			continue
-		}
-
-		chunks := getChunks(fileName)
-		var skip bool
-
-		for _, chunk := range chunks {
-			if ignoreData, ok := ignoreDataMap[chunk]; ok && ignoreData.fullIgnore {
-				skip = true
-			}
-		}
-
-		if skip {
-			continue
-		}
-
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
-		if err != nil {
-			return errors.Wrap(err, "parser.ParseFile")
-		}
-
-		noLintsMap := findDisableLines(node, fset)
-
-		wrapPackageName := getWrapPackageName(node)
-
-		fmtPackageName := getFmtPackageName(node)
-
-		wrapDataSl, errNamesMap := FindWrapCalls(node, fset, fileName, wrapPackageName, fmtPackageName, flags.CheckCyrillic)
-
-		callDataMap := getFuncCalls(node, fset, maps.Keys(errNamesMap))
-
-		findVariance(fileName, wrapDataSl, callDataMap, ignoreDataMap, noLintsMap)
-	}
-
-	return nil
+	findVariance(pass, cfg, wrapDataSl, callDataMap)
 }
 
 func findVariance(
-	fileName string,
+	pass *analysis.Pass,
+	cfg Config,
 	wrapDataSl []WrapData,
 	callDataMap map[string][]CallData,
-	ignoreDataMap map[string]IgnoreData,
-	noLintsMap map[int]struct{},
 ) {
 	for _, wrapData := range wrapDataSl {
-		if ignoreData, hasFileName := ignoreDataMap[fileName]; hasFileName {
-			if _, hasFuncName := ignoreData.funcNamesMap[wrapData.parentFunc]; hasFuncName {
-				continue
-			}
-		}
-
-		if isWrapCallIgnored(wrapData.line, noLintsMap) {
-			continue
-		}
-
 		errNameWithNesting := errNameAndNesting(wrapData.errName, wrapData.nestingsLevel)
 		callDataSl := callDataMap[errNameWithNesting]
 
@@ -96,9 +42,26 @@ func findVariance(
 			continue
 		}
 
-		if wrapData.parentFunc == callData.parentFunc && !isWrapMsgSuitable(callData.funcName, wrapData.message) {
-			printIncorrectWrap(fileName, wrapData.line, wrapData.column)
+		if wrapData.parentFunc == callData.parentFunc && !isWrapMsgSuitable(cfg, callData.funcName, wrapData.message) {
+			pass.Report(getDiagReport(wrapData.node, wrapData.isWrapf, wrapData.isErrorf))
 		}
+	}
+}
+
+func getDiagReport(node ast.Node, isWrapf, isErrorf bool) analysis.Diagnostic {
+	prefix := "errors.Wrap"
+
+	if isWrapf {
+		prefix += "f"
+	}
+	if isErrorf {
+		prefix = "fmt.Errorf"
+	}
+
+	return analysis.Diagnostic{
+		Pos:     node.Pos(),
+		End:     node.End(),
+		Message: fmt.Sprintf("message in %s does not match function or method name", prefix),
 	}
 }
 
@@ -252,10 +215,6 @@ func getFuncName(fun ast.Expr) string {
 	}
 }
 
-func printIncorrectWrap(fileName string, line, column int) {
-	fmt.Printf("%s:%d:%d\n", fileName, line, column)
-}
-
 func findCallData(callDataSl []CallData, wrapLine int) (CallData, bool) {
 	result := CallData{}
 	found := false
@@ -274,39 +233,4 @@ func findCallData(callDataSl []CallData, wrapLine int) (CallData, bool) {
 
 func errNameAndNesting(errName string, nestingLevel int) string {
 	return fmt.Sprintf("%s-%d", errName, nestingLevel)
-}
-
-func findDisableLines(file *ast.File, fset *token.FileSet) map[int]struct{} {
-	result := make(map[int]struct{})
-
-	for _, commentGroup := range file.Comments {
-		for _, comment := range commentGroup.List {
-			if strings.HasPrefix(comment.Text, "//nolint:") {
-				linters := strings.TrimPrefix(comment.Text, "//nolint:")
-				linters = strings.TrimSpace(linters)
-
-				for _, linter := range strings.Split(linters, ",") {
-					if strings.TrimSpace(linter) == "cwrapmsg" {
-						pos := fset.Position(comment.Pos())
-
-						result[pos.Line] = struct{}{}
-					}
-				}
-			}
-		}
-	}
-
-	return result
-}
-
-func isWrapCallIgnored(callLine int, noLintMap map[int]struct{}) bool {
-	if _, ok := noLintMap[callLine]; ok {
-		return true
-	}
-
-	if _, ok := noLintMap[callLine-1]; ok {
-		return true
-	}
-
-	return false
 }

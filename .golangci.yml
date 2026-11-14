@@ -1,0 +1,41 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - dupl
+    - errcheck
+    - goconst
+    - gosec
+    - ineffassign
+    - misspell
+    - nakedret
+    - nlreturn
+    - prealloc
+    - unparam
+    - unused
+    - usestdlibvars
+  settings:
+    dupl:
+      threshold: 120
+  exclusions:
+    generated: lax
+    rules:
+      # repeated strings in table tests
+      - path: _test\.go
+        linters:
+          - goconst
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-same-issues: 0
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
