@@ -1,7 +1,9 @@
 # testdata
 
 Test cases for [analysistest](https://pkg.go.dev/golang.org/x/tools/go/analysis/analysistest),
-the expected diagnostics are marked with `// want` comments. The directory is a separate module.
+the expected diagnostics are marked with `// want` comments. The directory is a separate module,
+its dependencies are vendored because analysistest loads packages with `GOPROXY=off`
+(update them with `go mod vendor` inside `testdata`).
 
 - `cwrapmsg/default` — the default settings: `positive.go` contains incorrect messages which are reported,
   `negative.go` contains correct messages and cases which are not checked.
