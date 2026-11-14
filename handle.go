@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"maps"
+	"slices"
 
-	"golang.org/x/exp/maps"
 	"golang.org/x/tools/go/analysis"
 )
 
@@ -22,7 +23,7 @@ func handle(
 ) {
 	wrapDataSl, errNamesMap := findWrapCalls(pass, file, pass.Fset, cfg, wrapPackageName, fmtPackageName)
 
-	callDataMap := getFuncCalls(file, pass.Fset, maps.Keys(errNamesMap))
+	callDataMap := getFuncCalls(file, pass.Fset, slices.Collect(maps.Keys(errNamesMap)))
 
 	findVariance(pass, cfg, wrapDataSl, callDataMap)
 }

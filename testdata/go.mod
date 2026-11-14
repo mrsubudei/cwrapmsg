@@ -1,5 +1,5 @@
 module github.com/mrsubudei/cwrapmsg/testdata
 
-go 1.26.4
+go 1.23.0
 
 require github.com/pkg/errors v0.9.1
