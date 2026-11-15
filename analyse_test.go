@@ -27,6 +27,11 @@ func TestAnalyzer(t *testing.T) {
 			},
 		},
 		{
+			// files of packages which use cgo are not skipped as generated
+			desc:   "./cwrapmsg/cgo/...",
+			config: &cwrapmsg.Config{},
+		},
+		{
 			// known limitations: incorrect messages which are not reported
 			desc: "./cwrapmsg/limitations/...",
 			config: &cwrapmsg.Config{
