@@ -55,6 +55,45 @@ The other flags are the standard flags of `go/analysis` linters (`-json`, `-test
 Generated files are skipped: files with the `// Code generated ... DO NOT EDIT.` comment,
 `*.pb.*` and `*_gen.go` files.
 
+### golangci-lint
+
+cwrapmsg can be used with golangci-lint as a [module plugin](https://golangci-lint.run/docs/plugins/module-plugins/).
+
+Create `.custom-gcl.yml`:
+
+```yaml
+version: v2.15.0
+plugins:
+  - module: github.com/mrsubudei/cwrapmsg
+    import: github.com/mrsubudei/cwrapmsg/plugin
+    version: v1.2.0
+```
+
+Build the custom binary with `golangci-lint custom`, it creates `./custom-gcl`.
+Enable the linter in `.golangci.yml`:
+
+```yaml
+version: "2"
+
+linters:
+  enable:
+    - cwrapmsg
+  settings:
+    custom:
+      cwrapmsg:
+        type: module
+        description: Checks messages passed to errors.Wrap, errors.Wrapf and fmt.Errorf.
+        settings:
+          # Skip messages with cyrillic symbols.
+          # Default: false
+          ignore-cyrillic: false
+          # Compare the message with the function or method name case-insensitively.
+          # Default: false
+          case-insensitive: false
+```
+
+And run it with `./custom-gcl run`.
+
 ## Message format
 
 For the call
@@ -190,3 +229,9 @@ examples are in [testdata/cwrapmsg/limitations](testdata/cwrapmsg/limitations):
 
 The linter has no exclusions of its own: they are provided by the tool which runs the analyzer,
 for example `//nolint:cwrapmsg` comments and exclusion rules in golangci-lint.
+
+## AI usage
+
+The original idea and the core logic of the linter were written by the author.
+The migration to `go/analysis`, the golangci-lint plugin, a part of the tests and the documentation
+were written with the help of an AI assistant (Claude Code) and reviewed by the author.

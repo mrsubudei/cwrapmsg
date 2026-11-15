@@ -11,8 +11,8 @@ import (
 )
 
 type Config struct {
-	IgnoreCyrillic  bool
-	CaseInsensitive bool
+	IgnoreCyrillic  bool `json:"ignore-cyrillic"`
+	CaseInsensitive bool `json:"case-insensitive"`
 }
 
 func handle(
